@@ -37,45 +37,43 @@ class CodeRequest(BaseModel):
 @app.get("/")
 def read_root():
     return {"message": "Plot Server API is running"}
-
 @app.post("/generate-plot")
 async def generate_plot(request: CodeRequest):
     try:
-        # Safety check - basic validation of Python code
-        ast.parse(request.code)
-        
+        ast.parse(request.code)  # Validate code syntax
+
         # Prepare output capture
         output_buffer = io.StringIO()
-        
-        # Setup figure with specified dimensions
-        plt.figure(figsize=(request.width/100, request.height/100), dpi=100)
-        
-        # For 3D plots, explicitly create a 3D axis
+
+        # Create figure with specified size and dpi
+        fig = plt.figure(figsize=(request.width / 100, request.height / 100), dpi=100)
+
+        # For 3D plots, explicitly add a 3D axis to the created figure
         if request.plot_type == "3d":
-            ax = plt.axes(projection='3d')
-            
-        # Execute the code with restricted globals
+            ax = fig.add_subplot(111, projection='3d')
+        else:
+            ax = fig.add_subplot(111)
+
+        # Custom global environment passed to exec()
         plot_globals = {
+            '__builtins__': __builtins__,
             'plt': plt,
             'np': np,
             'Axes3D': Axes3D,
-            'figure': plt.figure,
-            'ax': plt.gca(),
+            'fig': fig,
+            'ax': ax,
         }
-        
-        # Redirect stdout/stderr and execute code
+
         with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(output_buffer):
             exec(request.code, plot_globals)
-        
-        # Get any print output
+
         output_text = output_buffer.getvalue()
-        
-        # Generate appropriate response based on format
+
         if request.format == "interactive":
-            # Use mpld3 to convert to interactive HTML/JS
             try:
-                plot_html = mpld3.fig_to_html(plt.gcf())
-                plt.close()
+                import mpld3
+                plot_html = mpld3.fig_to_html(fig)
+                plt.close(fig)
                 return JSONResponse(content={
                     "success": True,
                     "format": "interactive",
@@ -83,9 +81,8 @@ async def generate_plot(request: CodeRequest):
                     "output": output_text
                 })
             except Exception as e:
-                # Fallback to PNG if mpld3 conversion fails
-                img_data = render_plot_to_base64()
-                plt.close()
+                img_data = render_plot_to_base64(fig)
+                plt.close(fig)
                 return JSONResponse(content={
                     "success": True,
                     "format": "png",
@@ -93,33 +90,31 @@ async def generate_plot(request: CodeRequest):
                     "output": output_text,
                     "conversion_error": str(e)
                 })
-        
+
         elif request.format == "svg":
-            # Generate SVG
             svg_io = io.StringIO()
-            plt.savefig(svg_io, format='svg')
+            fig.savefig(svg_io, format='svg')
             svg_io.seek(0)
             svg_data = svg_io.getvalue()
-            plt.close()
+            plt.close(fig)
             return JSONResponse(content={
-                "success": True, 
+                "success": True,
                 "format": "svg",
                 "plot": svg_data,
                 "output": output_text
             })
-            
-        else:  # Default to PNG
-            img_data = render_plot_to_base64()
-            plt.close()
+
+        else:
+            img_data = render_plot_to_base64(fig)
+            plt.close(fig)
             return JSONResponse(content={
                 "success": True,
-                "format": "png", 
+                "format": "png",
                 "plot": img_data,
                 "output": output_text
             })
-            
+
     except Exception as e:
-        plt.close()
         traceback_str = traceback.format_exc()
         return JSONResponse(
             status_code=400,
@@ -131,13 +126,15 @@ async def generate_plot(request: CodeRequest):
             }
         )
 
-def render_plot_to_base64():
-    """Convert the current matplotlib plot to base64 PNG."""
+
+def render_plot_to_base64(fig):
+    """Convert the given matplotlib figure to base64 PNG."""
     img_buffer = io.BytesIO()
-    plt.savefig(img_buffer, format='png', bbox_inches='tight')
+    fig.savefig(img_buffer, format='png', bbox_inches='tight')
     img_buffer.seek(0)
     img_data = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
     return img_data
+
 
 @app.get("/examples")
 def get_examples():
