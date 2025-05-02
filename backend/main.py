@@ -48,7 +48,13 @@ async def generate_plot(request: CodeRequest):
         output_buffer = io.StringIO()
         
         # Setup figure with specified dimensions
-        plt.figure(figsize=(request.width/100, request.height/100), dpi=100, facecolor=request.facecolor, edgecolor=request.edgecolor)
+        plt.figure(
+            figsize=(int(request.width)/100, int(request.height)/100),
+            dpi=100,
+            facecolor=getattr(request, "facecolor", "lightblue"),
+            edgecolor=getattr(request, "edgecolor", "darkblue")
+        )
+
         
         # For 3D plots, explicitly create a 3D axis
         if request.plot_type == "3d":
