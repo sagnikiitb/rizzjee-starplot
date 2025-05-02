@@ -33,6 +33,8 @@ class CodeRequest(BaseModel):
     format: str = "interactive"  # "interactive", "png", "svg"
     width: int = 800
     height: int = 600
+    facecolor: str = "lightblue"
+    edgecolor: str = "darkblue"
 
 @app.get("/")
 def read_root():
@@ -48,12 +50,7 @@ async def generate_plot(request: CodeRequest):
         output_buffer = io.StringIO()
         
         # Setup figure with specified dimensions
-        plt.figure(
-            figsize=(int(request.width)/100, int(request.height)/100),
-            dpi=100,
-            facecolor=getattr(request, "facecolor", "lightblue"),
-            edgecolor=getattr(request, "edgecolor", "darkblue")
-        )
+        plt.figure(figsize=(int(request.width)/100, int(request.height)/100), dpi=100, facecolor=getattr(request, "facecolor", "lightblue"), edgecolor=getattr(request, "edgecolor", "darkblue"))
 
         
         # For 3D plots, explicitly create a 3D axis
