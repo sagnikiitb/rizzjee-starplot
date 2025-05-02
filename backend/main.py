@@ -107,6 +107,108 @@ async def generate_plot(request: CodeRequest):
                 "plot": svg_data,
                 "output": output_text
             })
+        elif request.format == "threejs" and request.plot_type == "3d":
+            # Extract surface data from plot_globals
+            try:
+                X = plot_globals.get("X")
+                Y = plot_globals.get("Y")
+                Z = plot_globals.get("Z")
+
+                if X is None or Y is None or Z is None:
+                    raise ValueError("Variables X, Y, Z (meshgrid) not found in user code.")
+
+                # Flatten and build vertex list
+                vertices = []
+                faces = []
+                rows, cols = X.shape
+                for i in range(rows):
+                    for j in range(cols):
+                        vertices.append([float(X[i, j]), float(Y[i, j]), float(Z[i, j])])
+                for i in range(rows - 1):
+                    for j in range(cols - 1):
+                        a = i * cols + j
+                        b = a + 1
+                        c = a + cols
+                        d = c + 1
+                        faces.append([a, b, d])
+                        faces.append([a, d, c])
+
+                # Build HTML with embedded three.js
+                html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Three.js 3D Surface</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body style="margin:0">
+<canvas id="three-canvas"></canvas>
+<script>
+    const vertices = {json.dumps(vertices)};
+    const faces = {json.dumps(faces)};
+    const canvas = document.getElementById("three-canvas");
+    const renderer = new THREE.WebGLRenderer({{canvas}});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xffffff);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(10, 10, 10);
+    camera.lookAt(0, 0, 0);
+
+    const geometry = new THREE.BufferGeometry();
+    const positions = [];
+    for (let v of vertices) {{
+        positions.push(...v);
+    }}
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+    const indices = [];
+    for (let f of faces) {{
+        indices.push(...f);
+    }}
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+
+    const material = new THREE.MeshStandardMaterial({{color: 0x3399ff, flatShading: true, side: THREE.DoubleSide}});
+    const mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(10, 10, 10);
+    scene.add(light);
+
+    function animate() {{
+        requestAnimationFrame(animate);
+        mesh.rotation.y += 0.005;
+        renderer.render(scene, camera);
+    }}
+    animate();
+</script>
+</body>
+</html>
+"""
+                plt.close()
+                return JSONResponse(content={
+                    "success": True,
+                    "format": "threejs",
+                    "plot": html_content,
+                    "output": output_text
+                })
+
+            except Exception as e:
+                plt.close()
+                return JSONResponse(status_code=400, content={
+                    "success": False,
+                    "error": f"Three.js generation failed: {str(e)}",
+                    "traceback": traceback.format_exc(),
+                    "output": output_text
+                })
+
+
+
+        
             
         else:  # Default to PNG
             img_data = render_plot_to_base64()
